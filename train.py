@@ -75,7 +75,7 @@ def save_weights(epoch,iteration):
     save_dict = {"GA":GA.state_dict(),"GB":GB.state_dict(),"DA":DA.state_dict(),"DB":DB.state_dict(),
         "F":F.state_dict(),"STM":STM.state_dict(),"epoch":epoch}
 
-    torch.save(save_dict,config.weights_dir+"matching_net_"+str(epoch)+"_"+str(iteration)+".pth")
+    torch.save(save_dict,config.weights_dir+"/matching_net_"+str(epoch)+"_"+str(iteration)+".pth")
 
 def get_dataloaders():
 

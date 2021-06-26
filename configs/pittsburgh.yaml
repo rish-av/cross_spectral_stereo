@@ -1,5 +1,5 @@
 basepath: './data'
-pretrained: False
+pretrained: './weights/weightsmatching_net_0_3000.pth'
 epochs: 20
 alpha_aux: 1.0
 alpha_ds: 0.2
