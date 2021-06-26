@@ -76,7 +76,7 @@ def save_weights(epoch):
 
 def get_dataloaders():
 
-    dataset = sample()
+    dataset = pittburgh_rgb_nir(config)
 
     train_sampler, val_sampler = baseutils._split(dataset,config.val_percent)
     train_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=train_sampler)
@@ -142,14 +142,15 @@ def train():
 
     if config.pretrained:
         start_epoch = load_weights(config.pretrained)
-
+    else:
+        start_epoch = 0
 
     for epoch in range(start_epoch,epochs):
         for i,data in tqdm(enumerate(train_loader),total=len(train_loader)):
 
 
-            real_A = data['real_A']
-            real_B = data['real_B']
+            real_A = data['real_A'].to(device)
+            real_B = data['real_B'].to(device)
 
 
             non_normalized_A = data['org_A']
@@ -266,8 +267,8 @@ def train():
                         iteration_val = j + len(val_loader)*epoch
 
 
-                        real_A = data['real_A']
-                        real_B = data['real_B']
+                        real_A = data['real_A'].to(device)
+                        real_B = data['real_B'].to(device)
 
 
                         non_normalized_A = data['org_A']
@@ -290,7 +291,7 @@ def train():
                         loss_DB = optimize_discriminator(real_B,fake_B,DB,train=False)
 
                         loss_stm = multi_scale_loss(config,real_A,real_B,dispsl,dispsr)
-                        aux_loss = config.alpha_aux*auxilary_loss(real_A,real_B,fake_A,fake_B,displ,displr)
+                        aux_loss = config.alpha_aux*auxilary_loss(real_A,real_B,fake_A,fake_B,displ,dispr)
 
 
                         scalars_to_write = {"Val/Da_loss":loss_DA,"Val/Db_loss":loss_DB, 
@@ -298,11 +299,9 @@ def train():
 
                         baseutils._log(writer,iteration_val,scalars=scalars_to_write)
 
-
-
                         if iteration > 0. and iteration_val % config.image_on_tensorboard == 0:
                             images_to_write = {"A":non_normalized_A[0],"B":non_normalized_B[0],"displ":displ[0],
-                            "dispr":dispr[0],"fake_A":fake_A[0], "fake_B":fake_B[0]}
+                                    "dispr":dispr[0],"fake_A":fake_A[0], "fake_B":fake_B[0]}
                             baseutils._log(writer,iteration_val,images=images_to_write)
 
 

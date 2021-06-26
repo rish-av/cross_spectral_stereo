@@ -1,5 +1,5 @@
 basepath: './data'
-pretrained: None
+pretrained: False
 epochs: 20
 alpha_aux: 1.0
 alpha_ds: 0.2
@@ -18,12 +18,13 @@ stereo: False
 auxilary: False
 weights_dir: './weights'
 summary_root: './summary'
-tensorboard_freq: 100 #(after every 100 iterations push on tensorboard)
-weights_freq: 1000 #(save weight after every 1000 iterations)
+tensorboard_val_freq: 100 #(after every 10000 iterations do validation)
+weights_freq: 1000 #(save weights after every 1000 iterations)
 resize: 1
-crop_size: (420,580)
+crop_size: [420,580]
 batch_size: 1
-device_ids: [0,1,2,3]
+device_ids: [0]
 val_precent: 0.05
-image_on_tensorboard: 100
-val_percent: 0.05
+image_on_tensorboard: 100 # number of validation steps after which to write images on tensorboard
+val_percent: 0.05 #percent of data in validation
+multiscale_disp_weights: [1.0,0.9,0.7,0.5]

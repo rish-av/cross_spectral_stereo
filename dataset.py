@@ -37,7 +37,7 @@ class pittburgh_rgb_nir(data.Dataset):
         nir_img = cv2.imread(self.nir_imgs[index])
 
         h,w,_ = rgb_img.shape
-        new_size = (w/self.resize_factor,h/self.resize_factor)
+        new_size = (w//self.resize_factor,h//self.resize_factor)
 
         rgb_img = cv2.resize(rgb_img,new_size)
         nir_img = cv2.resize(nir_img,new_size)
@@ -51,8 +51,8 @@ class pittburgh_rgb_nir(data.Dataset):
 
         ##you can have different normalization
 
-        org_A = rgb_img
-        org_B = nir_img
+        org_A = rgb_img.transpose(2,0,1)
+        org_B = nir_img.transpose(2,0,1)
 
         rgb_img = (rgb_img - np.mean(rgb_img,axis=(0,1)))/(np.std(rgb_img,axis=(0,1)))
         nir_img = (nir_img - np.mean(nir_img))/np.std(nir_img)

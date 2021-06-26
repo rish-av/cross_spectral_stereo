@@ -129,7 +129,7 @@ class DispNetS(nn.Module):
         self.training = training
 
         conv_planes = [32, 64, 128, 256, 512, 512, 512]
-        self.conv1 = self.downsample_conv(3, conv_planes[0], 7)
+        self.conv1 = self.downsample_conv(6, conv_planes[0], 7)
         self.conv2 = self.downsample_conv(conv_planes[0], conv_planes[1], kernel_size=5)
         self.conv3 = self.downsample_conv(conv_planes[1], conv_planes[2])
         self.conv4 = self.downsample_conv(conv_planes[2], conv_planes[3])
@@ -171,8 +171,7 @@ class DispNetS(nn.Module):
 
     def predict_disp(self,in_planes):
         return nn.Sequential(
-        nn.Conv2d(in_planes, 1, kernel_size=3, padding=1),
-        nn.Sigmoid()
+        nn.Conv2d(in_planes, 1, kernel_size=3, padding=1)
         )
 
 
@@ -225,25 +224,25 @@ class DispNetS(nn.Module):
         out_upconv4 = self.crop_like(self.upconv4(out_iconv5), out_conv3)
         concat4 = torch.cat((out_upconv4, out_conv3), 1)
         out_iconv4 = self.iconv4(concat4)
-        disp4 = self.alpha * self.predict_disp4(out_iconv4) + self.beta
+        disp4 = self.predict_disp4(out_iconv4)
 
         out_upconv3 = self.crop_like(self.upconv3(out_iconv4), out_conv2)
         disp4_up = self.crop_like(F.interpolate(disp4, scale_factor=2, mode='bilinear', align_corners=False), out_conv2)
         concat3 = torch.cat((out_upconv3, out_conv2, disp4_up), 1)
         out_iconv3 = self.iconv3(concat3)
-        disp3 = self.alpha * self.predict_disp3(out_iconv3) + self.beta
+        disp3 = self.predict_disp3(out_iconv3)
 
         out_upconv2 = self.crop_like(self.upconv2(out_iconv3), out_conv1)
         disp3_up = self.crop_like(F.interpolate(disp3, scale_factor=2, mode='bilinear', align_corners=False), out_conv1)
         concat2 = torch.cat((out_upconv2, out_conv1, disp3_up), 1)
         out_iconv2 = self.iconv2(concat2)
-        disp2 = self.alpha * self.predict_disp2(out_iconv2) + self.beta
+        disp2 = self.predict_disp2(out_iconv2)
 
         out_upconv1 = self.crop_like(self.upconv1(out_iconv2), x)
         disp2_up = self.crop_like(F.interpolate(disp2, scale_factor=2, mode='bilinear', align_corners=False), x)
         concat1 = torch.cat((out_upconv1, disp2_up), 1)
         out_iconv1 = self.iconv1(concat1)
-        disp1 = self.alpha * self.predict_disp1(out_iconv1) + self.beta
+        disp1 = self.predict_disp1(out_iconv1)
 
         if self.training:
             return disp1, disp2, disp3, disp4

@@ -77,15 +77,15 @@ def multi_scale_loss(config,imgl,imgr,dispsl,dispsr):
             _,_,h,w = displ.shape
 
             resized_imgl = F.interpolate(imgl,size=(h,w))
-            resize_imgr = F.interpolate(imgr,size=(h,w))
+            resized_imgr = F.interpolate(imgr,size=(h,w))
 
             warped_lfromr = warp(resized_imgr,displ)
-            warped_rfroml = warp(resize_imgl,dispr)
+            warped_rfroml = warp(resized_imgl,dispr)
 
-            ap_loss_1 = ap_loss(config.ap_alpha,warped_lfromr,resize_imgl)
-            ap_loss_2  = ap_loss(config.ap_alpha,warped_rfroml,resized_imgr)
+            ap_loss_1 = ap_loss(config.alpha_ap,warped_lfromr,resized_imgl)
+            ap_loss_2  = ap_loss(config.alpha_ap,warped_rfroml,resized_imgr)
 
-            smooth_loss_1 = disparity_smoothness(displ,resize_imgl)
+            smooth_loss_1 = disparity_smoothness(displ,resized_imgl)
             smooth_loss_2 = disparity_smoothness(dispr,resized_imgr)
 
             lr_loss1 = lr_consistency_loss(dispr,displ)
@@ -124,12 +124,19 @@ class GANLoss(nn.Module):
             self.loss = None
         else:
             raise NotImplementedError('gan mode %s not implemented' % gan_mode)
+    def get_device(self):
+
+        if torch.cuda.is_available():
+            self.device = 'cuda:0'
+        else:
+            self.device = 'cpu:0'
 
     def get_target_tensor(self, prediction, target_is_real):
+        self.get_device()
         if target_is_real:
-            target_tensor = self.real_label
+            target_tensor = self.real_label.to(self.device)
         else:
-            target_tensor = self.fake_label
+            target_tensor = self.fake_label.to(self.device)
         return target_tensor.expand_as(prediction)
 
     def __call__(self, prediction, target_is_real):
