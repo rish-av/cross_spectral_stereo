@@ -4,16 +4,18 @@ import cv2
 import numpy as np
 import torch
 import os
+import preprocessing_utils
 
-class RgbNirData(data.Dataset):
+class pittburgh_rgb_nir(data.Dataset):
     def __init__(self,config):
         self.basepath = config.basepath
+        self.resize_factor = config.resize
+        self.crop = config.crop_size
+
         frame_seq = os.listdir(config.basepath)
         rgb_total = []
         nir_total = []
 
-
-        resize = config.resize
         for frame in frame_seq:
             frame_path = os.path.join(self.basepath,frame)
             rgb_frame_list = os.listdir(os.path.join(frame_path,"RGBResize"))
@@ -28,21 +30,40 @@ class RgbNirData(data.Dataset):
         self.rgb_imgs = sorted(rgb_total)
         self.nir_imgs = sorted(nir_total)
 
+        assert(len(self.rgb_imgs)==len(self.nir_imgs))
+
     def __getitem__(self,index):
         rgb_img = cv2.imread(self.rgb_imgs[index])
         nir_img = cv2.imread(self.nir_imgs[index])
 
-        rgb_img = cv2.resize(rgb_img,self.resize)
-        nir_img = cv2.resize(nir_img,self.resize)
+        h,w,_ = rgb_img.shape
+        new_size = (w/self.resize_factor,h/self.resize_factor)
 
-        ##you can have separate normalization
+        rgb_img = cv2.resize(rgb_img,new_size)
+        nir_img = cv2.resize(nir_img,new_size)
+
+
+        rgb_nir_cat = np.concatenate([rgb_img,nir_img],axis=2)
+        rgb_nir_cat = preprocessing_utils._get_random_crop(rgb_nir_cat,self.crop[0],self.crop[1])
+
+        rgb_img = rgb_nir_cat[:,:,:3]
+        nir_img = rgb_nir_cat[:,:,3:]
+
+        ##you can have different normalization
+
+        org_A = rgb_img
+        org_B = nir_img
+
         rgb_img = (rgb_img - np.mean(rgb_img,axis=(0,1)))/(np.std(rgb_img,axis=(0,1)))
         nir_img = (nir_img - np.mean(nir_img))/np.std(nir_img)
+
 
         rgb_img = rgb_img.transpose(2,0,1)
         nir_img = nir_img.transpose(2,0,1)
 
-        return np.float32(rgb_img[:,0:420,0:580]), np.float32(nir_img[:,0:420,0:580])
+
+        return {"real_A":np.float32(rgb_img), "real_B":np.float32(nir_img),
+                "org_A":np.float32(org_A),"org_B":np.float32(org_B)}
 
     def __len__(self):
         return len(self.rgb_imgs)

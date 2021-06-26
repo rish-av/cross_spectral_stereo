@@ -67,3 +67,78 @@ def lr_consistency_loss(dl,dr):
     lr_consis_r = torch.mean(torch.abs(dr-warp(dl,dr)))
 
     return lr_consis_r + lr_consis_l
+
+
+def multi_scale_loss(config,imgl,imgr,dispsl,dispsr):
+        weights = config.multiscale_disp_weights
+        net_loss = 0.
+        for weight,displ,dispr in zip(weights,dispsl,dispsr):
+
+            _,_,h,w = displ.shape
+
+            resized_imgl = F.interpolate(imgl,size=(h,w))
+            resize_imgr = F.interpolate(imgr,size=(h,w))
+
+            warped_lfromr = warp(resized_imgr,displ)
+            warped_rfroml = warp(resize_imgl,dispr)
+
+            ap_loss_1 = ap_loss(config.ap_alpha,warped_lfromr,resize_imgl)
+            ap_loss_2  = ap_loss(config.ap_alpha,warped_rfroml,resized_imgr)
+
+            smooth_loss_1 = disparity_smoothness(displ,resize_imgl)
+            smooth_loss_2 = disparity_smoothness(dispr,resized_imgr)
+
+            lr_loss1 = lr_consistency_loss(dispr,displ)
+            lr_loss2 = lr_consistency_loss(displ,dispr)
+
+            loss = config.alpha_ap*(ap_loss_1 + ap_loss_2) + config.alpha_ds*(smooth_loss_1 + smooth_loss_2) + config.alpha_lr*(lr_loss1 + lr_loss2)
+            net_loss+= weight*loss
+
+        return net_loss
+
+
+def auxilary_loss(real_A,real_B,fake_A,fake_B,displ,dispr):
+
+    warped_A = warp(real_A,dispr)
+    warped_B = warp(real_B,displ)
+
+    l2_loss = nn.MSELoss()
+
+    net_loss = l2_loss(warped_A,fake_A) + l2_loss(warped_B,fake_B)
+
+
+    return net_loss
+
+
+class GANLoss(nn.Module):
+    def __init__(self, gan_mode='lsgan', target_real_label=1.0, target_fake_label=0.0):
+        super(GANLoss, self).__init__()
+        self.register_buffer('real_label', torch.tensor(target_real_label))
+        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        self.gan_mode = gan_mode
+        if gan_mode == 'lsgan':
+            self.loss = nn.MSELoss()
+        elif gan_mode == 'vanilla':
+            self.loss = nn.BCEWithLogitsLoss()
+        elif gan_mode in ['wgangp']:
+            self.loss = None
+        else:
+            raise NotImplementedError('gan mode %s not implemented' % gan_mode)
+
+    def get_target_tensor(self, prediction, target_is_real):
+        if target_is_real:
+            target_tensor = self.real_label
+        else:
+            target_tensor = self.fake_label
+        return target_tensor.expand_as(prediction)
+
+    def __call__(self, prediction, target_is_real):
+        if self.gan_mode in ['lsgan', 'vanilla']:
+            target_tensor = self.get_target_tensor(prediction, target_is_real)
+            loss = self.loss(prediction, target_tensor)
+        elif self.gan_mode == 'wgangp':
+            if target_is_real:
+                loss = -prediction.mean()
+            else:
+                loss = prediction.mean()
+        return loss

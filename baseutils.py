@@ -136,3 +136,16 @@ def start_grad(net):
 
     for name, param in net.named_parameters():
         param.requires_grad = True
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
+def get_device():
+
+    if torch.cuda.is_available():
+        return 'cuda:0'
+    else:
+        return 'cpu:0'

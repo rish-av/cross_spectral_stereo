@@ -121,12 +121,12 @@ class PixelDiscriminator(nn.Module):
 
 class DispNetS(nn.Module):
 
-    def __init__(self, alpha=10, beta=0.01):
+    def __init__(self, training,alpha=10, beta=0.01):
         super(DispNetS, self).__init__()
 
         self.alpha = alpha
         self.beta = beta
-        self.training = False
+        self.training = training
 
         conv_planes = [32, 64, 128, 256, 512, 512, 512]
         self.conv1 = self.downsample_conv(3, conv_planes[0], 7)

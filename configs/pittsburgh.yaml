@@ -1,0 +1,28 @@
+basepath: './data'
+epochs: 20
+alpha_aux: 1.0
+alpha_ds: 0.2
+alpha_ap: 1
+ssim_alpha: 0.9
+alpha_lr: 0.1
+alpha_aux: 20
+ssim_windom: 5
+lambda_c: 10
+lambda_a: 1
+lambda_d: 1
+lambda_r: 5
+lambda_i: 0
+warmup: True
+stereo: False
+auxilary: False
+weights_dir: './weights'
+summary_root: './summary'
+tensorboard_freq: 100 #(after every 100 iterations push on tensorboard)
+weights_freq: 1000 #(save weight after every 1000 iterations)
+resize: 1
+crop_size: (420,580)
+batch_size: 1
+device_ids: [0,1,2,3]
+val_precent: 0.05
+image_on_tensorboard: 100
+val_percent: 0.05
