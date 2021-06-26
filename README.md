@@ -1,20 +1,20 @@
-Pytorch implmentation of the paper --> Unsupervised Cross-spectral Stereo Matching by Learning to Synthesize (https://arxiv.org/pdf/1903.01078.pdf)
+## Pytorch implmentation of the paper --> [Unsupervised Cross-spectral Stereo Matching by Learning to Synthesize](https://arxiv.org/pdf/1903.01078.pdf)
 
-Steps to train on Pittsburgh dataset:
+## Steps to train on Pittsburgh dataset:
 - Set up the config file in `./config` folder, adjust the hyperparameters as per your need
 - Download the pittsburgh RGB-NIR stereo dataset specify the location in the config file (`basepath`)
 
 
-Qualitative Results
+## Qualitative Results
 - **Available Soon**
 
-Quantitative Results
+## Quantitative Results
 - **Available Soon**
 
-Trained Weights:
-- Weights are available at following [link]["#"].
+## Trained Weights:
+- Weights are available at following [link]("#").
 
-Training
+## Training
 - The model follows iterative optimization technique
 - Step1--> Training the discriminator
 - Step2--> Training Feature Extractors and Generators 
@@ -26,6 +26,6 @@ Training
 - Change `warmup: False, stereo: False, auxilary: True` for step 4, the global optimization stage
 
 
-Summary
+## Summary
 - Summaries are created inside `./summary` folder
 - to view loss logs, intermediate results run `tensorboard --logdir ./summary`
