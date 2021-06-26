@@ -80,7 +80,7 @@ def get_dataloaders():
 
     train_sampler, val_sampler = baseutils._split(dataset,config.val_percent)
     train_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(dataset,1,sampler=val_sampler)
+    val_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=val_sampler)
 
     return train_loader, val_loader
 
