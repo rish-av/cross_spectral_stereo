@@ -16,6 +16,8 @@ import argparse
 from tqdm import tqdm
 import logging
 
+from os.path import join
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--config_file',default='./configs/pittsburgh.yaml',help='path to the config file')
 
@@ -49,6 +51,28 @@ gan_loss = GANLoss()
 cycle_loss = nn.MSELoss()
 identity_loss = nn.L1Loss()
 
+
+def load_weights(path):
+
+    state_dict = torch.load(path)
+    epoch = state_dict['epoch']
+    GA.load_state_dict(state_dict['GA'])
+    GB.load_state_dict(state_dict['GB'])
+    DA.load_state_dict(state_dict['DA'])
+    DB.load_state_dict(state_dict['DB'])
+    F.load_state_dict(state_dict['F'])
+    STM.load_state_dict(state_dict['STM'])
+
+
+    return epoch
+
+
+def save_weights(epoch):
+
+    save_dict = {"GA":GA.state_dict(),"GB":GB.state_dict(),"DA":DA.state_dict(),"DB":DB.state_dict(),
+        "F":F.state_dict(),"STM":STM.state_dict(),"epoch":epoch}
+
+    torch.save(save_dict,join(config.weights_dir,"matching_net_",epoch,"_",iteration,".pth"))
 
 def get_dataloaders():
 
@@ -101,7 +125,7 @@ def optimize_discriminator(real,fake,D,train=True):
 
  
 
-def train(num_epocs=20):
+def train():
     writer = baseutils.get_summary_writer(config.summary_root)
 
     warmup = config.warmup
@@ -116,7 +140,11 @@ def train(num_epocs=20):
     num_devices = len(config.device_ids)
 
 
-    for epoch in range(epochs):
+    if config.pretrained:
+        start_epoch = load_weights(config.pretrained)
+
+
+    for epoch in range(start_epoch,epochs):
         for i,data in tqdm(enumerate(train_loader),total=len(train_loader)):
 
 
@@ -128,10 +156,9 @@ def train(num_epocs=20):
             non_normalized_B = data['org_B']
 
             iteration = epoch*len(train_loader) + i
-            if warmup:
 
+            if warmup:
                 baseutils.block_grad(STM)
-            
                 fake_B = GA(F(real_B))
                 fake_A = GB(F(real_A))
                 rec_A = GB(F(fake_B))
@@ -279,11 +306,15 @@ def train(num_epocs=20):
                             baseutils._log(writer,iteration_val,images=images_to_write)
 
 
+            if iteration > 0. and iteration % config.weights_freq == 0:
+                save_weights(epoch)
+
+
 
 
 
 if __name__ == '__main__':
-    train(False)
+    train()
             
 
 

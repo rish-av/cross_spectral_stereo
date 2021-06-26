@@ -1,4 +1,5 @@
 basepath: './data'
+pretrained: None
 epochs: 20
 alpha_aux: 1.0
 alpha_ds: 0.2
