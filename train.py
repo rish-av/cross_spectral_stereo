@@ -9,7 +9,7 @@ from torch.nn import DataParallel as DP
 import torch.nn as nn
 
 import baseutils
-import torch.nn.functional as F
+import torch.nn.functional as Func
 
 import yaml
 import argparse
@@ -91,9 +91,9 @@ def optimize_generators(real_A, real_B, fake_A, fake_B, rec_A, rec_B,train=True)
         lambda_c = config.lambda_c
         if lambda_idt > 0: 
             idt_A = GA(real_B)
-            loss_idt_A = identity_loss(idt_A, real_B) * lambda_B * lambda_idt
+            loss_idt_A = identity_loss(idt_A, real_B)  * lambda_idt
             idt_B = GB(real_A)
-            loss_idt_B = identity_loss(idt_B, real_A) * lambda_A * lambda_idt
+            loss_idt_B = identity_loss(idt_B, real_A)  * lambda_idt
         else:
             loss_idt_A = 0
             loss_idt_B = 0
@@ -160,8 +160,8 @@ def train():
 
             if warmup:
                 baseutils.block_grad(STM)
-                fake_B = GA(F(real_B))
-                fake_A = GB(F(real_A))
+                fake_B = GA(F(real_A))
+                fake_A = GB(F(real_B))
                 rec_A = GB(F(fake_B))
                 rec_B = GA(F(fake_A))
 
