@@ -67,12 +67,15 @@ def load_weights(path):
     return epoch
 
 
-def save_weights(epoch):
+def save_weights(epoch,iteration):
+
+    if not os.path.exists(config.weights_dir):
+        os.mkdir(config.weights_dir)
 
     save_dict = {"GA":GA.state_dict(),"GB":GB.state_dict(),"DA":DA.state_dict(),"DB":DB.state_dict(),
         "F":F.state_dict(),"STM":STM.state_dict(),"epoch":epoch}
 
-    torch.save(save_dict,join(config.weights_dir,"matching_net_",epoch,"_",iteration,".pth"))
+    torch.save(save_dict,config.weights_dir+"/matching_net_"+str(epoch)+"_"+str(iteration)+".pth")
 
 def get_dataloaders():
 
@@ -80,7 +83,7 @@ def get_dataloaders():
 
     train_sampler, val_sampler = baseutils._split(dataset,config.val_percent)
     train_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(dataset,1,sampler=val_sampler)
+    val_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=val_sampler)
 
     return train_loader, val_loader
 
@@ -306,7 +309,7 @@ def train():
 
 
             if iteration > 0. and iteration % config.weights_freq == 0:
-                save_weights(epoch)
+                save_weights(epoch,iteration)
 
 
 

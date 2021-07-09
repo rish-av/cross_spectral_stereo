@@ -1,5 +1,5 @@
 basepath: './data'
-pretrained: False
+pretrained: './weights/weightsmatching_net_0_3000.pth'
 epochs: 20
 alpha_aux: 1.0
 alpha_ds: 0.2
@@ -18,11 +18,11 @@ stereo: False
 auxilary: False
 weights_dir: './weights'
 summary_root: './summary'
-tensorboard_val_freq: 100 #(after every 10000 iterations do validation)
+tensorboard_val_freq: 10000 #(after every 10000 iterations do validation)
 weights_freq: 1000 #(save weights after every 1000 iterations)
 resize: 1
 crop_size: [420,580]
-batch_size: 1
+batch_size: 2
 device_ids: [0]
 val_precent: 0.05
 image_on_tensorboard: 100 # number of validation steps after which to write images on tensorboard
