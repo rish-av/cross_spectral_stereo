@@ -4,7 +4,6 @@
 - Set up the config file in `./config` folder, adjust the hyperparameters as per your need
 - Download the pittsburgh RGB-NIR stereo dataset specify the location in the config file (`basepath`)
 
-
 ## Qualitative Results
 - **Available Soon**
 
@@ -12,7 +11,7 @@
 - **Available Soon**
 
 ## Trained Weights:
-- Weights are available at following [link]("#").
+- **Available Soon**
 
 ## Training
 - The model follows iterative optimization technique
