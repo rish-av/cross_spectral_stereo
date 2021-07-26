@@ -154,6 +154,14 @@ def train():
 
             real_A = data['real_A'].to(device)
             real_B = data['real_B'].to(device)
+            
+            
+            real_A = Func.relu((real_A - config.black_level) / (255.0 - config.black_level))
+            real_B = Func.relu((real_B - config.black_level) / (255.0 - config.black_level))
+            A_ratio = 0.5 / (real_A.mean(1).mean(1).mean(1) + 1e-3)
+            B_ratio = 0.5 / (real_B.mean(1).mean(1).mean(1) + 1e-3)
+            real_A = torch.clamp(real_A * A_ratio.view(-1, 1, 1, 1), 0.0, config.clamp_value)
+            real_B = torch.clamp(real_B * A_ratio.view(-1, 1, 1, 1), 0.0, config.clamp_value)
 
 
             non_normalized_A = data['org_A']
@@ -169,30 +177,34 @@ def train():
                 rec_B = GA(F(fake_A))
 
                 #step_1
-                baseutils.block_grad(GA)
-                baseutils.block_grad(GB)
-                baseutils.block_grad(F)
 
-                opt_disc.zero_grad()
-                loss_DA = optimize_discriminator(real_A,fake_A,DA)
-                loss_DB = optimize_discriminator(real_B,fake_B,DB)
-                opt_disc.step()
+                if warmup:
+                    baseutils.block_grad(STM) #make sure STM is blocked while training the GAN
+                    fake_B = GA(F(real_A))
+                    fake_A = GB(F(real_B))
+                    rec_A = GB(F(fake_B))
+                    rec_B = GA(F(fake_A))
 
 
-                #step_2
-                baseutils.start_grad(GA)
-                baseutils.start_grad(GB)
-                baseutils.start_grad(F)
+                    baseutils.block_grad(DA)
+                    baseutils.block_grad(DB)
 
-                baseutils.block_grad(DA)
-                baseutils.block_grad(DB)
+                    opt_gen.zero_grad()
+                    loss_G = optimize_generators(real_A,real_B,fake_A,fake_B,rec_A,rec_B)
+                    opt_gen.step()
 
-                opt_gen.zero_grad()
-                loss_G = optimize_generators(real_A,real_B,fake_A,fake_B,rec_A,rec_B)
-                opt_gen.step()
+                    baseutils.start_grad(DA)
+                    baseutils.start_grad(DB)
 
-                baseutils.start_grad(DA)
-                baseutils.start_grad(DB)
+
+                    opt_disc.zero_grad()
+                    loss_DA = optimize_discriminator(real_A,fake_A,DA)
+                    loss_DB = optimize_discriminator(real_B,fake_B,DB)
+                    opt_disc.step()
+
+
+                scalars_to_write = {"Train/Da_loss":loss_DA,"Train/Db_loss":loss_DB, "Train/G_loss":loss_G}
+                baseutils._log(writer,iteration,scalars=scalars_to_write)
 
 
                 scalars_to_write = {"Train/Da_loss":loss_DA,"Train/Db_loss":loss_DB, "Train/G_loss":loss_G}
@@ -231,7 +243,7 @@ def train():
 
             if auxilary:
                 # optimize based on auxilary loss
-                baseutils.block_grad(STM)
+                baseutils.block_grad(STM) #make sure to block STM, the GAN is not supposed to learn diparity!
                 baseutils.block_grad(DA)
                 baseutils.block_grad(DB)
 
@@ -253,7 +265,7 @@ def train():
                 dispr = dispsr[0]
 
 
-                aux_loss = config.alpha_aux*auxilary_loss(real_A,real_B,fake_A,fake_B,displ,displr)
+                aux_loss = config.alpha_aux*auxilary_loss(real_A,real_B,fake_A,fake_B,displ,dispr)
 
                 opt_gen.zero_grad()
                 aux_loss.backward()
