@@ -30,6 +30,8 @@ class pittburgh_rgb_nir(data.Dataset):
         self.rgb_imgs = sorted(rgb_total)
         self.nir_imgs = sorted(nir_total)
 
+
+        #make sure you length is the same
         assert(len(self.rgb_imgs)==len(self.nir_imgs))
 
     def __getitem__(self,index):
@@ -49,14 +51,9 @@ class pittburgh_rgb_nir(data.Dataset):
         rgb_img = rgb_nir_cat[:,:,:3]
         nir_img = rgb_nir_cat[:,:,3:]
 
-        ##you can have different normalization
 
         org_A = rgb_img.transpose(2,0,1)
         org_B = nir_img.transpose(2,0,1)
-
-        rgb_img = (rgb_img - np.mean(rgb_img,axis=(0,1)))/(np.std(rgb_img,axis=(0,1)))
-        nir_img = (nir_img - np.mean(nir_img))/np.std(nir_img)
-
 
         rgb_img = rgb_img.transpose(2,0,1)
         nir_img = nir_img.transpose(2,0,1)
