@@ -23,7 +23,7 @@ CycleGAN results
 - **Available Soon**
 
 ## Trained Weights:
-- Weights are available at following --> [link]("https://drive.google.com/drive/folders/1g0eLttO6W9YYuFfIgPQoGF9ixR1cjPkC?usp=sharing").
+- Weights are available at following --> [link](https://drive.google.com/drive/folders/1g0eLttO6W9YYuFfIgPQoGF9ixR1cjPkC?usp=sharing).
 - Download them and place in the folder where you will be saving your weights (`./weights` according to the default config file)
 - The weights will be saved in the following a particular format, for eg. `[epoch]_net_G_A.pth` and `latest_net_G_A.pth` which signifies the latest checkpoint, you can specify the epoch you want to load weights from in the config file.
 
