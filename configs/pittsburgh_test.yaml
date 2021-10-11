@@ -22,7 +22,7 @@ weights_dir: './weights'
 summary_root: './summary'
 weights_freq: 1000 #(save weights after every 1000 iterations)
 resize: 1
-crop_size: [420,580]
+crop_size: [429,582]
 batch_size: 2
 device_ids: [0,1]
 val_precent: 0.05

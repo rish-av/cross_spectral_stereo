@@ -1,355 +1,146 @@
-from torch.nn.modules.loss import L1Loss
-from losses import *
-from networks import FeatureExtraction,DispNetS,PixelDiscriminator, Generator
-from dataset import *
-from torch.utils.tensorboard import SummaryWriter
-import torch
+import time
 from tqdm import tqdm
-from torch.nn import DataParallel as DP
-import torch.nn as nn
-
-import baseutils
-import torch.nn.functional as Func
-
+from numpy.lib.type_check import real
+from dataset import pittburgh_rgb_nir
 import yaml
 import argparse
-from tqdm import tqdm
-import logging
+from attrdict import AttrDict
+from components.cyclegan import CycleGANModel
+from components.stereo_matching_net import StereoMatchingNet
+from components.utils import get_summary_writer, warp
+import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as Func
+import torch.nn as nn
 
-from os.path import join
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config_file',default='./configs/pittsburgh.yaml',help='path to the config file')
-
 args = parser.parse_args()
 
 with open(args.config_file) as fp:
     config = yaml.safe_load(fp)
-    config = baseutils.AttrDict(config)
+    config = AttrDict(config)
 
 
-if config:
-    logging.info("Config %s Loaded!", args.config_file)
-
-
-device = baseutils.get_device()
-
-F = DP(FeatureExtraction(3,None).to(device),config.device_ids)
-GA = DP(Generator(2).to(device),config.device_ids)
-GB = DP(Generator(2).to(device),config.device_ids)
-STM = DP(DispNetS(training=True).to(device),config.device_ids)
-DA = DP(PixelDiscriminator(3).to(device),config.device_ids)
-DB = DP(PixelDiscriminator(3).to(device),config.device_ids) 
+def get_auxilary_loss(real_A, real_B, fake_A, fake_B, ldisp, rdisp):
+    warped_A = warp(real_A,rdisp)
+    warped_B = warp(real_B,-ldisp)
+    l2_loss = nn.MSELoss()
+    net_loss = l2_loss(warped_A,fake_A) + l2_loss(warped_B,fake_B)
+    return net_loss
 
 
 
-opt_gen = torch.optim.Adam(list(GA.parameters()) + list(GB.parameters()) +list(F.parameters()),lr=0.0002)
-opt_disc = torch.optim.Adam(list(DA.parameters()) + list(DB.parameters()),lr=0.0002)
-opt_stm = torch.optim.Adam(STM.parameters(),lr=0.0002)
+def device():
+    if torch.cuda.is_available():
+        return 'cuda:0'
+    else:
+        return 'cpu:0'
 
-gan_loss = GANLoss()
-cycle_loss = nn.MSELoss()
-identity_loss = nn.L1Loss()
-
-
-def load_weights(path):
-
-    state_dict = torch.load(path)
-    epoch = state_dict['epoch']
-    GA.load_state_dict(state_dict['GA'])
-    GB.load_state_dict(state_dict['GB'])
-    DA.load_state_dict(state_dict['DA'])
-    DB.load_state_dict(state_dict['DB'])
-    F.load_state_dict(state_dict['F'])
-    STM.load_state_dict(state_dict['STM'])
-
-
-    return epoch
-
-
-def save_weights(epoch,iteration):
-
-    if not os.path.exists(config.weights_dir):
-        os.mkdir(config.weights_dir)
-
-    save_dict = {"GA":GA.state_dict(),"GB":GB.state_dict(),"DA":DA.state_dict(),"DB":DB.state_dict(),
-        "F":F.state_dict(),"STM":STM.state_dict(),"epoch":epoch}
-
-    torch.save(save_dict,config.weights_dir+"/matching_net_"+str(epoch)+"_"+str(iteration)+".pth")
-
-def get_dataloaders():
-
-    dataset = pittburgh_rgb_nir(config)
-
-    train_sampler, val_sampler = baseutils._split(dataset,config.val_percent)
-    train_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(dataset,config.batch_size,sampler=val_sampler)
-
-    return train_loader, val_loader
-
-
-
-def optimize_generators(real_A, real_B, fake_A, fake_B, rec_A, rec_B,train=True):
-        lambda_idt = config.lambda_i
-        lambda_c = config.lambda_c
-        if lambda_idt > 0: 
-            idt_A = GA(real_B)
-            loss_idt_A = identity_loss(idt_A, real_B)  * lambda_idt
-            idt_B = GB(real_A)
-            loss_idt_B = identity_loss(idt_B, real_A)  * lambda_idt
-        else:
-            loss_idt_A = 0
-            loss_idt_B = 0
-
-        loss_G_A = gan_loss(DA(fake_B), True)
-        loss_G_B = gan_loss(DB(fake_A), True)
-        loss_cycle_A = cycle_loss(rec_A, real_A) * lambda_c
-        loss_cycle_B = cycle_loss(rec_B, real_B) * lambda_c
-        loss_G = loss_G_A + loss_G_B + loss_cycle_A + loss_cycle_B + loss_idt_A + loss_idt_B
-
-        if train:
-            loss_G.backward()
-        return loss_G
-
-
-
-def optimize_discriminator(real,fake,D,train=True):
-
-    pred_real = D(real)
-    loss_D_real = gan_loss(pred_real, True)
-    pred_fake = D(fake.detach())
-    loss_D_fake = gan_loss(pred_fake, False)
-    loss_D = (loss_D_real + loss_D_fake) * 0.5
-
-    if train:
-        loss_D.backward()
-    return loss_D
-
-
- 
-
-def train():
-    writer = baseutils.get_summary_writer(config.summary_root)
+if __name__ == '__main__':
+    datas = pittburgh_rgb_nir(config)
+    dataset_size = len(datas)
+    dataset = torch.utils.data.DataLoader(datas,config.batch_size,shuffle=True)
 
     warmup = config.warmup
     stereo = config.stereo
     auxilary = config.auxilary
     epochs = config.epochs
 
+    summarywriter = get_summary_writer(rootdir=config.summary_root)
 
-    train_loader, val_loader = get_dataloaders()
-    train_size = len(train_loader)
-    val_size = len(val_loader)
-    num_devices = len(config.device_ids)
+    spectral_net = CycleGANModel(config)
+    stereo_matching_net = StereoMatchingNet(config)
+
+    spectral_net.load_ckpts(epoch=config.pretrained_epoch)
+    stereo_matching_net.load_ckpts(epoch=config.pretrained_epoch)
+    
+    
+    optim_smn = torch.optim.Adam(stereo_matching_net.parameters(), lr=0.0002, betas=(0.99, 0.999))
+
+    spectral_net.setup()
+    stereo_matching_net.setup(optim_smn)
 
 
-    if config.pretrained:
-        start_epoch = load_weights(config.pretrained)
-    else:
-        start_epoch = 0
+    total_iters = 0            
+    epoch_start_time = time.time()
+    for epoch in range(0, epochs):
+        epoch_iter = 0
+        spectral_net.update_learning_rate()
+        for i, data in tqdm(enumerate(dataset)):  
+            total_iters += 1
+            epoch_iter += 1
 
-    for epoch in range(start_epoch,epochs):
-        for i,data in tqdm(enumerate(train_loader),total=len(train_loader)):
-
-
-            real_A = data['real_A'].to(device)
-            real_B = data['real_B'].to(device)
+            step = epoch*len(dataset) + i
             
-            
-            real_A = Func.relu((real_A - config.black_level) / (255.0 - config.black_level))
-            real_B = Func.relu((real_B - config.black_level) / (255.0 - config.black_level))
-            A_ratio = 0.5 / (real_A.mean(1).mean(1).mean(1) + 1e-3)
-            B_ratio = 0.5 / (real_B.mean(1).mean(1).mean(1) + 1e-3)
-            real_A = torch.clamp(real_A * A_ratio.view(-1, 1, 1, 1), 0.0, config.clamp_value)
-            real_B = torch.clamp(real_B * A_ratio.view(-1, 1, 1, 1), 0.0, config.clamp_value)
-
-
-            non_normalized_A = data['org_A']
-            non_normalized_B = data['org_B']
-
-            iteration = epoch*len(train_loader) + i
-
+            #for warmup epochs where only GAN is trained for spectral translation
             if warmup:
-                baseutils.block_grad(STM)
-                fake_B = GA(F(real_A))
-                fake_A = GB(F(real_B))
-                rec_A = GB(F(fake_B))
-                rec_B = GA(F(fake_A))
+                stereo_matching_net.set_requires_grad(stereo_matching_net,False)
+                spectral_net.set_input(data)         
+                spectral_net.optimize_parameters()
+                spectral_net.log_metrics(step=step)
 
-                #step_1
-
-                if warmup:
-                    baseutils.block_grad(STM) #make sure STM is blocked while training the GAN
-                    fake_B = GA(F(real_A))
-                    fake_A = GB(F(real_B))
-                    rec_A = GB(F(fake_B))
-                    rec_B = GA(F(fake_A))
+                if total_iters % config.weights_freq == 0:   
+                    save_suffix = 'latest'
+                    spectral_net.save_networks(save_suffix)
 
 
-                    baseutils.block_grad(DA)
-                    baseutils.block_grad(DB)
-
-                    opt_gen.zero_grad()
-                    loss_G = optimize_generators(real_A,real_B,fake_A,fake_B,rec_A,rec_B)
-                    opt_gen.step()
-
-                    baseutils.start_grad(DA)
-                    baseutils.start_grad(DB)
-
-
-                    opt_disc.zero_grad()
-                    loss_DA = optimize_discriminator(real_A,fake_A,DA)
-                    loss_DB = optimize_discriminator(real_B,fake_B,DB)
-                    opt_disc.step()
-
-
-                scalars_to_write = {"Train/Da_loss":loss_DA,"Train/Db_loss":loss_DB, "Train/G_loss":loss_G}
-                baseutils._log(writer,iteration,scalars=scalars_to_write)
-
-
-                scalars_to_write = {"Train/Da_loss":loss_DA,"Train/Db_loss":loss_DB, "Train/G_loss":loss_G}
-                baseutils._log(writer,iteration,scalars=scalars_to_write)
-
-            #step 3
+            #for stereo matching, after warmp epochs
             if stereo:
-                # optimize STM
+                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A], False)
+                spectral_net.set_input(data)
+                spectral_net.forward()
+                fake_B,fake_A,_,_ = spectral_net.get_images()
+                data["fake_A"] = fake_A
+                data["fake_B"] = fake_B
 
-                baseutils.start_grad(STM)
-                baseutils.block_grad(GA)
-                baseutils.block_grad(GB)
-                baseutils.block_grad(DA)
-                baseutils.block_grad(DB)
-                baseutils.block_grad(F)
+                stereo_matching_net.set_input(data)
+                stereo_matching_net.optimize_parameters()
+                stereo_matching_net.log_metrics(step=step)
 
-                fake_B = GA(F(real_B))
-                fake_A = GB(F(real_A))
-
-
-                dispnet_inp_1 = torch.cat([real_A,fake_B],dim=1)
-                dispnet_inp_2 = torch.cat([real_B,fake_A],dim=1)
-
-                dispsl = STM(dispnet_inp_1)
-                dispsr = STM(dispnet_inp_2)
-
-                loss_stm = multi_scale_loss(config,real_A,real_B,dispsl,dispsr)
-
-                opt_stm.zero_grad()
-                loss_stm.backward()
-                opt_stm.step()
+                if total_iters % config.weights_freq == 0:   
+                    save_suffix = 'latest'
+                    stereo_matching_net.save_networks(save_suffix)
 
 
-                scalars_to_write = {"Train/loss_stm":loss_stm}
-                baseutils._log(writer,step=iteration,scalars=scalars_to_write)
+            #final auxilary training step
+            if auxilary:
+                stereo_matching_net.set_requires_grad(stereo_matching_net,False)
+                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A],True)
+                spectral_net.set_input(data)
+                spectral_net.forward()
+                fake_B,fake_A,_,_ = spectral_net.get_images()
+
+                data["fake_A"] = fake_A
+                data["fake_B"] = fake_B
+
+                stereo_matching_net.set_input(data)
+                stereo_matching_net.forward()
+                ldisp, rdisp = stereo_matching_net.ldisps[0], stereo_matching_net.rdisps[0]
+
+                aux_loss = get_auxilary_loss(data["A"].to(device()), data["B"].to(device()), fake_A.to(device()), 
+                fake_B.to(device()), ldisp.to(device()), rdisp.to(device()))
+                spectral_net.optimize_auxilary(aux_loss)
+                spectral_net.log_metrics(step=step)
+
+
+                if total_iters % config.weights_freq == 0:   
+                    save_suffix = 'latest'
+                    spectral_net.save_networks(save_suffix)
+
+        if epoch % 5 == 0:
+            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+            if warmup:
+                spectral_net.save_networks("latest")
+                spectral_net.save_networks(epoch)
+
+            if stereo:
+                stereo_matching_net.save_networks("latest")
+                stereo_matching_net.save_networks(epoch)
 
             if auxilary:
-                # optimize based on auxilary loss
-                baseutils.block_grad(STM) #make sure to block STM, the GAN is not supposed to learn diparity!
-                baseutils.block_grad(DA)
-                baseutils.block_grad(DB)
+                spectral_net.save_networks("latest")
+                spectral_net.save_networks(epoch)
 
-                baseutils.start_grad(GA)
-                baseutils.start_grad(GB)
-                baseutils.start_grad(F)
-
-
-                fake_B = GA(F(real_B))
-                fake_A = GB(F(real_A))
-
-                dispnet_inp_1 = torch.cat([real_A,fake_B],dim=1)
-                dispnet_inp_2 = torch.cat([real_B,fake_A],dim=1)
-
-                dispsl = STM(dispnet_inp_1)
-                dispsr = STM(dispnet_inp_2)
-
-                displ = dispsl[0]
-                dispr = dispsr[0]
-
-
-                aux_loss = config.alpha_aux*auxilary_loss(real_A,real_B,fake_A,fake_B,displ,dispr)
-
-                opt_gen.zero_grad()
-                aux_loss.backward()
-                opt_gen.step()
-
-                scalars_to_write = {"Train/auxilary_loss":aux_loss}
-                baseutils._log(writer,step=iteration,scalars=scalars_to_write)
-
-
-            if iteration>0. and iteration % config.tensorboard_val_freq==0 :
-                
-                with torch.no_grad():
-                    for j,data in tqdm(enumerate(val_loader),total=len(val_loader)):
-                        iteration_val = j + len(val_loader)*epoch
-
-
-                        real_A = data['real_A'].to(device)
-                        real_B = data['real_B'].to(device)
-
-
-                        non_normalized_A = data['org_A']
-                        non_normalized_B = data['org_B']
-
-                        fake_B = GA(F(real_B))
-                        fake_A = GB(F(real_A))
-
-                        dispnet_inp_1 = torch.cat([real_A,fake_B],dim=1)
-                        dispnet_inp_2 = torch.cat([real_B,fake_A],dim=1)
-
-                        dispsl = STM(dispnet_inp_1)
-                        dispsr = STM(dispnet_inp_2)
-
-                        displ = dispsl[0]
-                        dispr = dispsr[0]
-
-                        loss_G = optimize_generators(real_A,real_B,fake_A,fake_B,rec_A,rec_B,train=False)
-                        loss_DA = optimize_discriminator(real_A,fake_A,DA,train=False)
-                        loss_DB = optimize_discriminator(real_B,fake_B,DB,train=False)
-
-                        loss_stm = multi_scale_loss(config,real_A,real_B,dispsl,dispsr)
-                        aux_loss = config.alpha_aux*auxilary_loss(real_A,real_B,fake_A,fake_B,displ,dispr)
-
-
-                        scalars_to_write = {"Val/Da_loss":loss_DA,"Val/Db_loss":loss_DB, 
-                                        "Val/G_loss":loss_G,"Val/loss_stm":loss_stm,"Val/auxilary_loss":aux_loss}
-
-                        baseutils._log(writer,iteration_val,scalars=scalars_to_write)
-
-                        if iteration > 0. and iteration_val % config.image_on_tensorboard == 0:
-                            images_to_write = {"A":non_normalized_A[0],"B":non_normalized_B[0],"displ":displ[0],
-                                    "dispr":dispr[0],"fake_A":fake_A[0], "fake_B":fake_B[0]}
-                            baseutils._log(writer,iteration_val,images=images_to_write)
-
-
-            if iteration > 0. and iteration % config.weights_freq == 0:
-                save_weights(epoch,iteration)
-
-
-
-
-
-if __name__ == '__main__':
-    train()
-            
-
-
-
-
-
-
-
-
-
-        
-            
-            
-
-
-            
-        
-
-        
-
-
-
-    
-
+        print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, 20, time.time() - epoch_start_time))
