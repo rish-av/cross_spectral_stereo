@@ -7,7 +7,7 @@ import argparse
 from attrdict import AttrDict
 from components.cyclegan import CycleGANModel
 from components.stereo_matching_net import StereoMatchingNet
-from components.utils import get_summary_writer, warp
+from components.utils import get_summary_writer, pyramid, warp_pyramid
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as Func
@@ -17,17 +17,29 @@ import torch.nn as nn
 parser = argparse.ArgumentParser()
 parser.add_argument('--config_file',default='./configs/pittsburgh.yaml',help='path to the config file')
 args = parser.parse_args()
+l2_loss = nn.MSELoss()
+
 
 with open(args.config_file) as fp:
     config = yaml.safe_load(fp)
     config = AttrDict(config)
 
 
-def get_auxilary_loss(real_A, real_B, fake_A, fake_B, ldisp, rdisp):
-    warped_A = warp(real_A,rdisp)
-    warped_B = warp(real_B,-ldisp)
-    l2_loss = nn.MSELoss()
-    net_loss = l2_loss(warped_A,fake_A) + l2_loss(warped_B,fake_B)
+def get_auxilary_loss(real_A, real_B, fake_A, fake_B, ldisps, rdisps):
+    warped_As = pyramid(real_A)
+    warped_Bs = pyramid(real_B)
+
+    fake_As = pyramid(fake_A)
+    fake_Bs = pyramid(fake_B)
+
+    warped_As = warp_pyramid(warped_As,rdisps,1)
+    warped_Bs = warp_pyramid(warped_Bs,ldisps,-1)
+    
+    net_loss = 0.
+    for warped_A, warped_B, fake_A_s, fake_B_s,wt in zip(warped_As, warped_Bs, fake_As, fake_Bs, config.multiscale_disp_weights):
+        scale_loss = l2_loss(warped_A,fake_A_s) + l2_loss(warped_B,fake_B_s)
+        net_loss+=wt*scale_loss
+
     return net_loss
 
 
@@ -74,7 +86,7 @@ if __name__ == '__main__':
 
             step = epoch*len(dataset) + i
             
-            #for warmup epochs where only GAN is trained for spectral translation
+            #for warmup epochs where only GAN is trained for spectral translation step 1 and 2
             if warmup:
                 stereo_matching_net.set_requires_grad(stereo_matching_net,False)
                 spectral_net.set_input(data)         
@@ -86,26 +98,28 @@ if __name__ == '__main__':
                     spectral_net.save_networks(save_suffix)
 
 
-            #for stereo matching, after warmp epochs
-            if stereo:
-                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A], False)
-                spectral_net.set_input(data)
-                spectral_net.forward()
-                fake_B,fake_A,_,_ = spectral_net.get_images()
-                data["fake_A"] = fake_A
-                data["fake_B"] = fake_B
+            #all steps after warmp epochs (all steps --> 1,2,3,4)
+            else:
 
+                #step 1,2
+                stereo_matching_net.set_requires_grad(stereo_matching_net,False)
+                spectral_net.set_input(data)         
+                spectral_net.optimize_parameters()
+                spectral_net.log_metrics(step=step)
+
+                #step 3
+                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A], False)
+                fake_B,fake_A,_,_ = spectral_net.get_images()
+                data["fake_A"] = fake_A.detach()
+                data["fake_B"] = fake_B.detach()
+
+                stereo_matching_net.set_requires_grad(stereo_matching_net,True)
                 stereo_matching_net.set_input(data)
                 stereo_matching_net.optimize_parameters()
                 stereo_matching_net.log_metrics(step=step)
 
-                if total_iters % config.weights_freq == 0:   
-                    save_suffix = 'latest'
-                    stereo_matching_net.save_networks(save_suffix)
 
-
-            #final auxilary training step
-            if auxilary:
+                #step 4
                 stereo_matching_net.set_requires_grad(stereo_matching_net,False)
                 spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A],True)
                 spectral_net.set_input(data)
@@ -117,30 +131,19 @@ if __name__ == '__main__':
 
                 stereo_matching_net.set_input(data)
                 stereo_matching_net.forward()
-                ldisp, rdisp = stereo_matching_net.ldisps[0], stereo_matching_net.rdisps[0]
+                ldisps, rdisps = stereo_matching_net.ldisps, stereo_matching_net.rdisps
 
                 aux_loss = get_auxilary_loss(data["A"].to(device()), data["B"].to(device()), fake_A.to(device()), 
-                fake_B.to(device()), ldisp.to(device()), rdisp.to(device()))
+                fake_B.to(device()), ldisps, rdisps)
                 spectral_net.optimize_auxilary(aux_loss)
                 spectral_net.log_metrics(step=step)
-
 
                 if total_iters % config.weights_freq == 0:   
                     save_suffix = 'latest'
                     spectral_net.save_networks(save_suffix)
+                    stereo_matching_net.save_networks(save_suffix)
 
-        if epoch % 5 == 0:
-            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
-            if warmup:
-                spectral_net.save_networks("latest")
-                spectral_net.save_networks(epoch)
-
-            if stereo:
-                stereo_matching_net.save_networks("latest")
-                stereo_matching_net.save_networks(epoch)
-
-            if auxilary:
-                spectral_net.save_networks("latest")
-                spectral_net.save_networks(epoch)
-
+        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+        spectral_net.save_networks(epoch)
+        stereo_matching_net.save_networks(epoch)
         print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, 20, time.time() - epoch_start_time))

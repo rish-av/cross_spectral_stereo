@@ -7,7 +7,7 @@ from components.utils import *
 import os
 from components.utils import *
 import math
-from matplotlib import cm
+import cv2 
 
 
 class DispNet(nn.Module):
@@ -160,7 +160,7 @@ class StereoMatchingNet(nn.Module):
 
     def forward(self):
         A_cat = torch.cat([self.real_A,self.fake_B],axis=1)
-        B_cat = torch.cat([self.real_B,self.fake_A],axis=1)
+        B_cat = torch.cat([self.fake_A,self.real_B],axis=1)
         disps = self.netsmn(torch.cat((A_cat, B_cat), 1))
         ldisps = [disps[0][:, :1, :, :], disps[1][:, :1, :, :], disps[2][:, :1, :, :], disps[3][:, :1, :, :]]
         rdisps = [disps[0][:, 1:, :, :], disps[1][:, 1:, :, :], disps[2][:, 1:, :, :], disps[3][:, 1:, :, :]]
@@ -197,11 +197,11 @@ class StereoMatchingNet(nn.Module):
         ldisps = self.ldisps
         rdisps = self.rdisps
 
-        wrdisps = warp_pyramid(ldisps,rdisps,1)
-        wldisps = warp_pyramid(rdisps,ldisps,-1)
+        wldisps = warp_pyramid(ldisps,rdisps,1)
+        wrdisps = warp_pyramid(rdisps,ldisps,-1)
 
         A_cat = torch.cat([self.real_A, self.fake_B],dim=1)
-        B_cat = torch.cat([self.real_B, self.fake_A],dim=1)
+        B_cat = torch.cat([self.fake_A, self.real_B],dim=1)
 
         A_cats_pyramid = pyramid(A_cat)
         B_cats_pyramid = pyramid(B_cat)
@@ -209,33 +209,35 @@ class StereoMatchingNet(nn.Module):
         A_cats_warped_pyramid = warp_pyramid(A_cats_pyramid,rdisps,1)
         B_cats_warped_pyramid = warp_pyramid(B_cats_pyramid,ldisps,-1)
 
-        smn_losses_total = 0
-        for i,loss_weight in zip(range(4),self.config.multiscale_disp_weights):
+        smn_losses_total = []
+        for i in range(4):
             l_consist = l1_loss(ldisps[i], wrdisps[i])
             r_consist = l1_loss(rdisps[i], wldisps[i])
 
             l_l1 = l1_loss(B_cats_warped_pyramid[i], A_cats_pyramid[i])
             r_l1 = l1_loss(B_cats_pyramid[i], A_cats_warped_pyramid[i])
 
-
             l_ssim = dssim(B_cats_warped_pyramid[i], A_cats_pyramid[i])
             r_ssim = dssim(B_cats_pyramid[i], A_cats_warped_pyramid[i])
 
-            l_photo = (1 - self.config.alpha_ap) * l_l1 + self.config.alpha_ap * l_ssim
-            r_photo = (1 - self.config.alpha_ap) * r_l1 + self.config.alpha_ap * r_ssim
+            l_photo = (1 - self.config.alpha_ssim) * l_l1 + self.config.alpha_ssim * l_ssim
+            r_photo = (1 - self.config.alpha_ssim) * r_l1 + self.config.alpha_ssim * r_ssim
             ldisp_gradx, ldisp_grady = grad(ldisps[i])
             rdisp_gradx, rdisp_grady = grad(rdisps[i])
             rgb_gradx, rgb_grady = sobel(A_cats_pyramid[i])
             nir_gradx, nir_grady = sobel(B_cats_pyramid[i])
-            l_easmooth = torch.exp(-l1_mean(rgb_gradx)) * ldisp_gradx.abs() + \
-                torch.exp(-l1_mean(rgb_grady)) * ldisp_grady.abs()
-            r_easmooth = torch.exp(-l1_mean(nir_gradx.cuda())) * rdisp_gradx.cuda().abs() + \
-                torch.exp(-l1_mean(nir_grady.cuda())) * rdisp_grady.cuda().abs()
-            smn_loss = self.config.alpha_lr * (l_consist.mean() + r_consist.mean()) + (l_photo.mean() + r_photo.mean()) + self.config.alpha_ds * (l_easmooth.mean() + r_easmooth.mean())
-            smn_losses_total += loss_weight*smn_loss
+            l_easmooth = torch.exp(-l1_mean(rgb_gradx)) * ldisp_gradx.abs() + torch.exp(-l1_mean(rgb_grady)) * ldisp_grady.abs()
+            r_easmooth = torch.exp(-l1_mean(nir_gradx.cuda())) * rdisp_gradx.cuda().abs() + torch.exp(-l1_mean(nir_grady.cuda())) * rdisp_grady.cuda().abs()
+            smn_loss_level = self.config.alpha_lr * (l_consist + r_consist) + self.config.alpha_ap*(l_photo + r_photo) + self.config.alpha_ds * (l_easmooth + r_easmooth)
+            smn_losses_total.append(smn_loss_level)
 
-        self.smn_loss = smn_losses_total
-        return smn_losses_total
+        smn_net_loss = 0
+        for loss,wt in zip(smn_losses_total,self.config.multiscale_disp_weights):
+            smn_net_loss+=wt*(loss.mean())
+
+        smn_net_loss.backward()
+        self.smn_loss = smn_net_loss
+        return smn_net_loss
         
 
     def log_metrics(self,step):
@@ -244,31 +246,25 @@ class StereoMatchingNet(nn.Module):
                 self.summarywriter.add_scalar('smn_loss',self.smn_loss,step)
 
 
-    def get_disparity_image(self,disp,maxdisp=-1,mask=None):
+    def get_disparity_image(self,disp):
 
-        disp = disp[0][0].detach().cpu().numpy()
-        maxd = maxdisp
-        if maxd < 0:
-            maxd = np.max(disp)
-        vals = disp/maxd
-        img = cm.jet(vals)
-        img[vals > 1] = [1,0,0,1]
-        if mask is not None:
-            img[mask != 1] = [0,0,0,1]
-        img = img[:,:,0:3]
-        return np.uint8(img*255)
+        disp = torch.clamp(disp[0][0]/0.031,0,1).detach().cpu().numpy()*255
+        disp = disp.astype(np.uint8)
+
+        image = np.stack([disp,disp,disp],axis=2)
+        image = cv2.applyColorMap(image, cv2.COLORMAP_JET)
+        return image
 
     def optimize_parameters(self):
         self.forward()
-        loss = self.get_loss()
         self.optimizer.zero_grad()
-        loss.backward()
+        loss = self.get_loss()
         self.optimizer.step()
 
     
     def tensor2im(self,tensor):
         tensor = tensor.permute(1,2,0).detach().cpu().numpy()*0.5 + 0.5
-        return tensor
+        return tensor*255
 
     def get_visuals(self):
 
@@ -277,4 +273,4 @@ class StereoMatchingNet(nn.Module):
         imgs_A = self.tensor2im(self.real_A[0])
         imgs_B = self.tensor2im(self.real_B[0])
 
-        return disparity_left, disparity_right, imgs_A*255, imgs_B*255
+        return disparity_left, disparity_right, imgs_A, imgs_B
