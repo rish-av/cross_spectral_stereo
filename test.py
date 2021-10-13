@@ -13,9 +13,6 @@ from tqdm import tqdm
 from pathlib import Path
 
 
-##### FINAL VERIFICATION OF THIS FILE IS NEEDED!
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--config_file',default='./configs/pittsburgh_test.yaml',help='path to the config file')
 args = parser.parse_args()
@@ -29,9 +26,11 @@ def test(test_loader, stereo_net, spectral_net):
     ans = [[],[],[],[],[],[],[],[]]
     with torch.no_grad():
         for i, data in tqdm(enumerate(test_loader)):
-            rgb_path = data['A_paths']
+            rgb_path = data['A_paths'][0]
             splitted = rgb_path.split('/')
             collection, key = splitted[2], splitted[-1].replace("_RGBResize.png","")
+            data["A"] = nn.functional.interpolate(data["A"],(420,580))
+            data["B"] = nn.functional.interpolate(data["B"],(420,580))
             spectral_net.set_input(data)
             spectral_net.forward()
             fake_B, fake_A, _, _ = spectral_net.get_images()
@@ -40,9 +39,9 @@ def test(test_loader, stereo_net, spectral_net):
 
             stereo_net.set_input(data)
             stereo_net.forward()
-            ldisp = stereo_net.ldisps[0][0][0].cpu().numpy()
+            ldisp = nn.functional.interpolate(stereo_net.ldisps[0],(429,582))[0][0].cpu().numpy()
 
-            f = open(Path(config.data_path) / collection / 'Keypoint' / (key + '_Keypoint.txt'), 'r')
+            f = open(Path(config.basepath) / collection / 'Keypoint' / (key + '_Keypoint.txt'), 'r')
             gts = f.readlines()
             f.close()
             for gt in gts:
@@ -75,8 +74,8 @@ if __name__ == '__main__':
     stereo_net  = StereoMatchingNet(config)
     spectral_net = CycleGANModel(config)
 
-    stereo_net.load_ckpts(config.stereo_pretrained)
-    spectral_net.load_ckpts(config.spectral_pretrained)
+    stereo_net.load_ckpts(config.pretrained_epoch)
+    spectral_net.load_ckpts(config.pretrained_epoch)
 
     test(test_loader,stereo_net, spectral_net)
     
