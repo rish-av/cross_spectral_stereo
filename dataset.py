@@ -38,6 +38,7 @@ class pittburgh_rgb_nir(data.Dataset):
 
         frame_seq_train = os.listdir(self.basepath)
         frame_seq_test = ["20170222_0951","20170222_1423","20170223_1639","20170224_0742"]
+        frame_seq_train = [fname for fname in frame_seq_train if fname not in frame_seq_test]
 
         rgb_total = []
         nir_total = []
@@ -91,9 +92,10 @@ class pittburgh_rgb_nir(data.Dataset):
         rgb_img = cv2.resize(rgb_img,new_size)
         nir_img = cv2.resize(nir_img,new_size)
 
-
         rgb_nir_cat = np.concatenate([rgb_img,nir_img],axis=2)
-        rgb_nir_cat = _get_random_crop(rgb_nir_cat,self.crop[0],self.crop[1])
+
+        if self.mode == 'train':
+            rgb_nir_cat = _get_random_crop(rgb_nir_cat,self.crop[0],self.crop[1])
 
         rgb_img = rgb_nir_cat[:,:,:3]
         nir_img = rgb_nir_cat[:,:,3:]
