@@ -1,12 +1,12 @@
 basepath: './data'
 gan_pretrained: './weights/'
 pretrained_epoch: 'latest'
-stm_pretrained: './weights'
+stm_pretrained: True
 epochs: 20
-alpha_ds: 0.2
+alpha_ds: 25.0
 alpha_ap: 1.0
 alpha_ssim: 0.9
-alpha_lr: 0.1
+alpha_lr: 2.0
 alpha_aux: 20
 ssim_windom: 5
 lambda_c: 10
@@ -14,8 +14,6 @@ lambda_a: 1
 lambda_d: 1
 lambda_r: 5
 warmup: False
-stereo: True
-auxilary: False
 weights_dir: './weights'
 summary_root: './summary'
 weights_freq: 1000 #(save weights after every 1000 iterations)
