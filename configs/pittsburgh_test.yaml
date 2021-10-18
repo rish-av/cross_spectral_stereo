@@ -3,4 +3,7 @@ gan_pretrained: './weights/'
 pretrained_epoch: 'latest'
 stm_pretrained: './weights'
 resize: 1
+
+# note -- this resizes the picture and not crops it for testing
+crop_size: [420, 580]
 batch_size: 1
