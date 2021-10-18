@@ -56,8 +56,6 @@ if __name__ == '__main__':
     dataset = torch.utils.data.DataLoader(datas,config.batch_size,shuffle=True)
 
     warmup = config.warmup
-    stereo = config.stereo
-    auxilary = config.auxilary
     epochs = config.epochs
 
     summarywriter = get_summary_writer(rootdir=config.summary_root)
@@ -92,7 +90,6 @@ if __name__ == '__main__':
                 spectral_net.set_input(data)         
                 spectral_net.optimize_parameters()
                 spectral_net.log_metrics(step=step)
-
                 if total_iters % config.weights_freq == 0:   
                     save_suffix = 'latest'
                     spectral_net.save_networks(save_suffix)
@@ -101,13 +98,13 @@ if __name__ == '__main__':
             #all steps after warmp epochs (all steps --> 1,2,3,4)
             else:
 
-                #step 1,2
                 stereo_matching_net.set_requires_grad(stereo_matching_net,False)
+                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A], True)
+
                 spectral_net.set_input(data)         
                 spectral_net.optimize_parameters()
                 spectral_net.log_metrics(step=step)
 
-                #step 3
                 spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A], False)
                 fake_B,fake_A,_,_ = spectral_net.get_images()
                 data["fake_A"] = fake_A.detach()
@@ -117,22 +114,16 @@ if __name__ == '__main__':
                 stereo_matching_net.set_input(data)
                 stereo_matching_net.optimize_parameters()
                 stereo_matching_net.log_metrics(step=step)
-
-
-                #step 4
+                vis = stereo_matching_net.get_visuals()
+                
                 stereo_matching_net.set_requires_grad(stereo_matching_net,False)
-                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B, spectral_net.netD_B, spectral_net.netD_A],True)
+                spectral_net.set_requires_grad([spectral_net.netG_A,spectral_net.netG_B],True)
                 spectral_net.set_input(data)
                 spectral_net.forward()
                 fake_B,fake_A,_,_ = spectral_net.get_images()
-
-                data["fake_A"] = fake_A
-                data["fake_B"] = fake_B
-
-                stereo_matching_net.set_input(data)
-                stereo_matching_net.forward()
                 ldisps, rdisps = stereo_matching_net.ldisps, stereo_matching_net.rdisps
-
+                ldisps = [ldisp.detach()  for ldisp in ldisps]
+                rdisps = [rdisp.detach()  for rdisp in rdisps]
                 aux_loss = get_auxilary_loss(data["A"].to(device()), data["B"].to(device()), fake_A.to(device()), 
                 fake_B.to(device()), ldisps, rdisps)
                 spectral_net.optimize_auxilary(aux_loss)
