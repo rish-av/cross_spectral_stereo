@@ -10,6 +10,12 @@ import math
 import cv2 
 
 
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
 class DispNet(nn.Module):
 
     def __init__(self, in_shape, in_channels, out_channels, out_scale):
@@ -161,11 +167,11 @@ class StereoMatchingNet(nn.Module):
     def forward(self):
         A_cat = torch.cat([self.real_A,self.fake_B],axis=1)
         B_cat = torch.cat([self.fake_A,self.real_B],axis=1)
-        disps = self.netsmn(torch.cat((A_cat, B_cat), 1))
+        disps = self.netsmn(torch.cat((A_cat,B_cat), 1))
         ldisps = [disps[0][:, :1, :, :], disps[1][:, :1, :, :], disps[2][:, :1, :, :], disps[3][:, :1, :, :]]
         rdisps = [disps[0][:, 1:, :, :], disps[1][:, 1:, :, :], disps[2][:, 1:, :, :], disps[3][:, 1:, :, :]]
-        self.ldisps = ldisps
-        self.rdisps = rdisps
+        self.ldisps = [torch.clamp(ldisp,0,1) for ldisp in ldisps]
+        self.rdisps = [torch.clamp(rdisp,0,1) for rdisp in rdisps]
 
     def save_networks(self, epoch):
         """Save all the networks to the disk.
@@ -180,7 +186,9 @@ class StereoMatchingNet(nn.Module):
     def load_ckpts(self,epoch):
         if self.config.stm_pretrained:
             stm_path  = os.path.join(self.config.stm_pretrained,str(epoch) + "_net_smn.pth")
-            self.netsmn.load_state_dict(torch.load(stm_path))
+            params = torch.load(stm_path)
+
+            self.netsmn.load_state_dict(params)
 
 
     def set_requires_grad(self, nets, requires_grad=False):
@@ -200,8 +208,8 @@ class StereoMatchingNet(nn.Module):
         wldisps = warp_pyramid(ldisps,rdisps,1)
         wrdisps = warp_pyramid(rdisps,ldisps,-1)
 
-        A_cat = torch.cat([self.real_A, self.fake_B],dim=1)
-        B_cat = torch.cat([self.fake_A, self.real_B],dim=1)
+        A_cat = torch.cat([self.real_A,self.fake_B],axis=1)
+        B_cat = torch.cat([self.fake_A,self.real_B],axis=1)
 
         A_cats_pyramid = pyramid(A_cat)
         B_cats_pyramid = pyramid(B_cat)
@@ -234,8 +242,6 @@ class StereoMatchingNet(nn.Module):
         smn_net_loss = 0
         for loss,wt in zip(smn_losses_total,self.config.multiscale_disp_weights):
             smn_net_loss+=wt*(loss.mean())
-
-        smn_net_loss.backward()
         self.smn_loss = smn_net_loss
         return smn_net_loss
         
@@ -256,15 +262,16 @@ class StereoMatchingNet(nn.Module):
         return image
 
     def optimize_parameters(self):
-        self.forward()
         self.optimizer.zero_grad()
+        self.forward()
         loss = self.get_loss()
+        loss.backward()
         self.optimizer.step()
 
     
     def tensor2im(self,tensor):
         tensor = tensor.permute(1,2,0).detach().cpu().numpy()*0.5 + 0.5
-        return tensor*255
+        return tensor
 
     def get_visuals(self):
 
@@ -273,4 +280,4 @@ class StereoMatchingNet(nn.Module):
         imgs_A = self.tensor2im(self.real_A[0])
         imgs_B = self.tensor2im(self.real_B[0])
 
-        return disparity_left, disparity_right, imgs_A, imgs_B
+        return disparity_left, disparity_right, imgs_A*255, imgs_B*255
