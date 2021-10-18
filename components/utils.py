@@ -34,11 +34,11 @@ def pyramid(im, n_levels=4, anti_aliasing=False):
 def warp(im, disp):
     theta = torch.Tensor(np.array([[1, 0, 0], [0, 1, 0]])).cuda()
     theta = theta.expand((disp.size()[0], 2, 3)).contiguous()
-    grid = F.affine_grid(theta, disp.size())
+    grid = F.affine_grid(theta, disp.size(),align_corners=True)
     disp = disp.transpose(1, 2).transpose(2, 3)
     disp = torch.cat((disp, torch.zeros(disp.size()).cuda()), 3)
     grid = grid + 2 * disp
-    sampled = F.grid_sample(im, grid)
+    sampled = F.grid_sample(im, grid,align_corners=True)
     return sampled
 
 
@@ -48,6 +48,7 @@ def warp_pyramid(ims, disps, sgn):
         disp = sgn * disps[i]
         result.append(warp(im.cuda(), disp.cuda()))
     return result
+
 
 
 def fliplr(im):
