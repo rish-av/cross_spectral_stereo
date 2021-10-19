@@ -29,10 +29,9 @@ CycleGAN results
 
 ## Training
 - The model follows iterative optimization technique as described in the paper.
-- Only CycleGAN is trained for 10 epochs, thus `warmup: True, stereo: False, auxilary: False` in config file
-- Change `warmup: False, stereo: True, auxilary: False` for training the Stereo Matching Network for another 2-3 epochs
-- Change `warmup: False, stereo: False, auxilary: True` for the global optimization stage, i.e., auxilary loss
-- For quantitative analysis, prepare a config file (eg. `pittsburgh_test.yaml`) and run     `python test.py --config ./configs/pittsburgh_test.yaml`
+- Only CycleGAN is trained for 10 epochs, thus set `warmup: True` in config file
+- Change `warmup: False` for training combined step 1,2,3,4 
+- For quantitative results, prepare a config file (eg. `pittsburgh_test.yaml`) and run `python test.py --config ./configs/pittsburgh_test.yaml`
 
 
 ## Summary
