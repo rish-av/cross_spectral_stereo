@@ -15,8 +15,12 @@
 
 
 ## Quantitative Results
-- **Available Soon**
+|Method | Common  | Light   | Glass   | Glossy   |  Veg     | Skin     | Clothing |    Bag   | Mean |
+| :----: | :-----: | :-----: | :-----: | :------: | :------: | :------: | :------: | :------: | :------: |
+| From paper (STN + SMN) | 1.13 | 1.55 | 1.05 | 1.52 | 0.89 | 1.23 | 1.14 | 0.98 | 1.18 |
+| This Implementation | 0.64 | 1.51 | 1.12 | 1.93 | 0.70 | 1.12 | 1.14 | 1.12 | 1.17 |
 
+Comparing STN + SMN since the spectral transalation in this implementation is not F-cyclegan but the original cyclegan.
 ## Trained Weights:
 - Weights are available at following --> [link](https://drive.google.com/drive/folders/1g0eLttO6W9YYuFfIgPQoGF9ixR1cjPkC?usp=sharing).
 - Download them and place in the folder where you will be saving your weights (`./weights` according to the default config file)
