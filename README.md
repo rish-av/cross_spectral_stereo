@@ -1,4 +1,4 @@
-## Pytorch implmentation of the paper --> [Unsupervised Cross-spectral Stereo Matching by Learning to Synthesize](https://arxiv.org/pdf/1903.01078.pdf)
+## Unofficial Pytorch implementation of - [Unsupervised Cross-spectral Stereo Matching by Learning to Synthesize](https://arxiv.org/pdf/1903.01078.pdf)
 
 ## Steps to train on Pittsburgh dataset:
 - Set up the config file in `./config` folder, adjust the hyperparameters as per your need
