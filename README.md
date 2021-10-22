@@ -37,7 +37,7 @@ Comparing STN + SMN since the spectral transalation in this implementation is no
 - Summaries are created inside `./summary` folder
 - to view loss logs run `tensorboard --logdir ./summary`
 
-## Differnces from the original Paper
+## Differences from the original Paper
 - The spectral translation network is cyclegan and not F-cyclegan
 - The weights of the losses are different, for some reason the network was not converging with the default loss weights for my training setup.
 - The model is not optimized for best performance since I don't have the hardware and rely on Colab :)
