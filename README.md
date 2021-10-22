@@ -7,17 +7,12 @@
 
 
 ## Qualitative Results
-CycleGAN results
-| Left (RGB)  | Fake Left (NIR) | Right (NIR) | Fake Right (RGB) |
-| :-----------: | :------: | :-----: | :------: |
-|![Left](visuals/real_A_503_10.png) | ![Left Fake](visuals/fake_B_503_10.png) |  ![Right](visuals/real_B_503_10.png) |![Right Fake](visuals/fake_A_503_10.png) |
-|![Left](visuals/real_A_709_14.png) | ![Left Fake](visuals/fake_B_709_14.png) |  ![Right](visuals/real_B_709_14.png) |![Right Fake](visuals/fake_A_709_14.png) |
-|![Left](visuals/real_A_739_15.png) | ![Left Fake](visuals/fake_B_739_15.png) |  ![Right](visuals/real_B_739_15.png) |![Right Fake](visuals/fake_A_739_15.png) |
+| Left (RGB)  | Fake Left (NIR) | Right (NIR) | Fake Right (RGB) | Disparity |
+| :-----------: | :------: | :-----: | :------: | :------: |
+|![Left](visuals/real_A_503_10.png) | ![Left Fake](visuals/fake_B_503_10.png) |  ![Right](visuals/real_B_503_10.png) |![Right Fake](visuals/fake_A_503_10.png) | ![Disp](visuals/503_disp.png) |
+|![Left](visuals/real_A_709_14.png) | ![Left Fake](visuals/fake_B_709_14.png) |  ![Right](visuals/real_B_709_14.png) |![Right Fake](visuals/fake_A_709_14.png) | ![Disp](visuals/709_disp.png) |
+|![Left](visuals/real_A_739_15.png) | ![Left Fake](visuals/fake_B_739_15.png) |  ![Right](visuals/real_B_739_15.png) |![Right Fake](visuals/fake_A_739_15.png) | ![Disp](visuals/739_disp.png) |
 
-**The last row is a failure case. As can be seen, the color of the bus is not properly transferred by the GAN**
-
-- Stereo Matching Results
-    - **Available very soon**
 
 ## Quantitative Results
 - **Available Soon**
@@ -37,3 +32,8 @@ CycleGAN results
 ## Summary
 - Summaries are created inside `./summary` folder
 - to view loss logs run `tensorboard --logdir ./summary`
+
+## Differnces from the original Paper
+- The spectral translation network is cyclegan and not F-cyclegan
+- The weights of the losses are different, for some reason the network was not converging with the default loss weights for my training setup.
+- The model is not optimized for best performance since I don't have the hardware and rely on Colab :)
